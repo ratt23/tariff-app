@@ -17,14 +17,17 @@ module.exports = {
   // Job management settings
   JOB_CLEANUP_INTERVAL: 3600000, // 1 hour in milliseconds
   JOB_MAX_AGE: 3600000,          // Jobs older than 1 hour akan dihapus
-  
+
   // Storage configuration
   // 'file' untuk production (Netlify), 'memory' untuk development
   STORAGE_TYPE: process.env.STORAGE_TYPE || 'file',
-  
-  // Storage path - Netlify Functions menggunakan /tmp dengan max 500MB
-  STORAGE_PATH: process.env.STORAGE_PATH || path.join(__dirname, 'tmp', 'jobs'),
-  
+
+  // Storage path - use absolute /tmp for Netlify, relative for local
+  STORAGE_PATH: process.env.STORAGE_PATH ||
+    (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
+      ? '/tmp/jobs'  // Absolute path for Netlify/Lambda
+      : path.join(__dirname, 'tmp', 'jobs')), // Relative for local
+
   // Timeout settings (milliseconds)
   TIMEOUTS: {
     PER_CHUNK: 8000,             // Max 8 seconds per chunk processing
