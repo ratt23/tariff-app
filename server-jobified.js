@@ -13,13 +13,22 @@ const { inspectSourceFile, buildReportChunked, inspectTemplateFile } = require('
 const { CHUNK_SIZES } = require('./chunkProcessor');
 
 const app = express();
-const UPLOAD_DIR = 'uploads';
-const OUTPUT_DIR = 'output';
 
-[UPLOAD_DIR, OUTPUT_DIR, 'public'].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); });
+// Use /tmp for Netlify, relative paths for local development
+const IS_NETLIFY = process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME;
+const BASE_DIR = IS_NETLIFY ? '/tmp' : '.';
+const UPLOAD_DIR = path.join(BASE_DIR, 'uploads');
+const OUTPUT_DIR = path.join(BASE_DIR, 'output');
+
+// Create directories if they don't exist
+[UPLOAD_DIR, OUTPUT_DIR].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+});
 
 app.use(express.static('public'));
-app.use('/output', express.static('output'));
+app.use('/output', express.static(OUTPUT_DIR)); // Use OUTPUT_DIR variable
 app.use(express.json());
 
 const storage = multer.diskStorage({
