@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="id">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GraphiWorks - Pengolah Data Cerdas</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header class="app-header">
+            <h2 style="text-align: left; margin: 0; border: none; padding: 0;"><i class="fas fa-magic-wand-sparkles"
+                    style="color: var(--primary-color);"></i> GraphiWorks</h2>
+            <button class="btn btn-secondary" id="backToMenuBtn" style="display: none;"><i
+                    class="fas fa-arrow-left"></i> Menu</button>
+        </header>
+        <main>
+            <div id="mainMenu" class="view">
+                <h3>Pilih Alat yang Ingin Digunakan:</h3>
+                <div class="menu-choice" data-target="tarifGeneratorApp"><i
+                        class="fas fa-file-invoice-dollar menu-icon"></i>
+                    <div class="menu-text"><strong>Generator Buku Tarif</strong>
+                        <p>Ubah daftar harga mentah menjadi format buku tarif yang rapi.</p>
+                    </div>
+                </div>
+                <div class="menu-choice" data-target="reportConstructorApp"><i class="fas fa-hammer menu-icon"></i>
+                    <div class="menu-text"><strong>Konstruktor Laporan</strong>
+                        <p>Bangun laporan kustom dari sumber data mentah.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tarifGeneratorApp" class="view">
+                <h2 style="margin-bottom: 20px;"><i class="fas fa-file-invoice-dollar"></i> Generator Buku Tarif</h2>
+                <div id="tarifUploadStep" class="panel-section">
+                    <div class="upload-area" id="tarifUploadArea"><label for="tarifFileInput" class="upload-label"><i
+                                class="fas fa-upload"></i> Pilih File</label><input type="file" id="tarifFileInput"
+                            accept=".xlsx,.xls">
+                        <p id="tarifFileName" style="color: #6c757d; margin-top: 15px;">Pilih file Excel untuk memulai
+                        </p>
+                    </div>
+                </div>
+                <div id="tarifLoading" class="loading" style="display: none;"></div>
+                <div id="tarifControlPanel" class="panel-section" style="display: none;">
+                    <div class="settings-grid">
+                        <div class="main-settings">
+                            <h4><i class="fas fa-database"></i> 1. Konfigurasi Sumber Data</h4>
+                            <div class="form-row">
+                                <label for="tarifSheetSelect">Pilih Sheet</label>
+                                <select id="tarifSheetSelect"></select>
+                            </div>
+                            <div class="form-row">
+                                <label for="tarifFilterColumnSelect">Filter Berdasarkan (Opsional)</label>
+                                <select id="tarifFilterColumnSelect"></select>
+                            </div>
+                            <h4 style="margin-top: 30px;"><i class="fas fa-arrows-alt-h"></i> 2. Pemetaan Kolom</h4>
+                            <form id="tarifMappingForm"></form>
+                        </div>
+                        <div class="contextual-settings">
+                            <div id="filter-values-wrapper" style="display:none;">
+                                <h4>Filter Nilai</h4>
+                                <p style="font-size: 0.8em; color: #6c757d; margin-top: -10px;">Pilih nilai yang ingin
+                                    diproses.</p>
+                                <div id="tarifFilterValuesContainer"></div>
+                            </div>
+                            <div id="class-map-wrapper" style="display:none;">
+                                <h4>Pemetaan Nilai Kelas</h4>
+                                <p style="font-size: 0.8em; color: #6c757d; margin-top: -10px;">Cocokkan nama kelas dari
+                                    file Anda ke target standar.</p>
+                                <form id="tarifClassMappingForm"></form>
+                            </div>
+                        </div>
+                    </div>
+                    <div
+                        style="text-align: center; margin-top: 30px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                        <button id="tarifProcessBtn" class="btn"><span class="spinner-icon"><i
+                                    class="fas fa-spinner fa-spin"></i></span><span class="btn-text"><i
+                                    class="fas fa-rocket"></i> Proses Buku Tarif</span></button>
+                    </div>
+                </div>
+                <div id="tarifRes"></div>
+            </div>
+
+            <div id="reportConstructorApp" class="view">
+                <h2 style="margin-bottom: 5px;"><i class="fas fa-hammer"></i> Konstruktor Laporan</h2>
+                <p class="view-subtitle">Bangun laporan baru dari data mentah Anda dalam beberapa langkah mudah.</p>
+
+                <div id="rcUploadStep" class="panel-section">
+                    <h4>1. Unggah File Sumber Data</h4>
+                    <p style="text-align: center; margin-top: -10px; color: var(--secondary-color);">Unggah file Excel
+                        yang berisi semua data mentah Anda.</p>
+                    <div class="upload-area" id="rcUploadArea">
+                        <label for="rcFileInput" class="upload-label"><i class="fas fa-database"></i> Pilih File
+                            Sumber</label>
+                        <input type="file" id="rcFileInput" accept=".xlsx,.xls">
+                        <p id="rcFileName" class="file-name-display">Belum ada file dipilih</p>
+                    </div>
+                </div>
+
+                <input type="file" id="rcTemplateInput" accept=".xlsx,.xls" style="display: none;">
+
+                <div id="rcLoading" class="loading" style="display: none;"></div>
+                <div id="rcControlPanel" class="panel-section" style="display: none; padding: 0;">
+                    <div id="rcTopPanel" class="rc-top-panel"></div>
+                    <div id="rcWorkspace" class="rc-workspace"></div>
+                    <div class="rc-footer-actions">
+                        <button id="rcProcessBtn" class="btn"><i class="fas fa-rocket"></i> Buat Laporan</button>
+                    </div>
+                </div>
+                <div id="rcRes"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="appModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Judul Modal</h3>
+                <button id="modalCloseBtn" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="jobPoller.js" defer></script>
+    <script src="script.js" defer></script>
+    <script src="tarif-generator.js" defer></script>
+    <script src="report-constructor.js" defer></script>
+
+</body>
+
+</html>

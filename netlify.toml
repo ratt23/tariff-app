@@ -1,0 +1,25 @@
+[build]
+  command = "npm install"
+  publish = "public"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "18"
+  STORAGE_TYPE = "file"
+
+[[redirects]]
+  from = "/jobs/*"
+  to = "/.netlify/functions/api/jobs/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/output/*"
+  to = "/output/:splat"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type"

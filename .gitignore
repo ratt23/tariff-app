@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+.netlify/
+dist/
+build/
+
+# Temporary files
+tmp/
+uploads/
+*.tmp
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Output files (auto-generated)
+output/
+
+# Job storage (will be recreated)
+tmp/jobs/
+
+# Test files
+test-*.xlsx
+test-*.xls
