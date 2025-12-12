@@ -647,7 +647,10 @@ app.post('/jobs/start-template-inspection', upload.single('templateFile'), async
 });
 
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 GraphiWorks (Job-Based) berjalan di http://localhost:${PORT}`));
+// Only listen if run directly, not when imported by Netlify Functions
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`🚀 GraphiWorks (Job-Based) berjalan di http://localhost:${PORT}`));
+}
 
 module.exports = app; // Export for Netlify Functions
