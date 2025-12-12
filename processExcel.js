@@ -1,6 +1,8 @@
 const Excel = require('exceljs');
 const path = require('path');
+const fs = require('fs');
 const { processExcelInChunks, mergeChunkResults, CHUNK_SIZES } = require('./chunkProcessor');
+const { uploadFile } = require('./cloudinaryConfig');
 
 function parsePrice(val) {
   if (val === null || val === undefined || val === '') return null;
@@ -219,12 +221,27 @@ async function createFinalExcel(rows) {
   outSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } };
   outSheet.addRows(rows);
 
-  const outputDir = path.join(__dirname, 'output');
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  /* 
+   * Updated to use os.tmpdir() for Netlify compatibility
+   */
+  const os = require('os');
   const outFileName = `Buku_Tarif_LAB_${timestamp}.xlsx`;
-  const outPath = path.join(outputDir, outFileName);
+  const outPath = path.join(os.tmpdir(), outFileName);
+
   await outWb.xlsx.writeFile(outPath);
-  return outPath;
+
+  // Upload to Cloudinary
+  try {
+    const uploadResult = await uploadFile(outPath, 'tariff-app/output');
+    // Cleanup local file
+    fs.unlink(outPath, () => { });
+    return uploadResult.secure_url;
+  } catch (error) {
+    console.error('Error uploading output file:', error);
+    // If upload fails, try to return local path or throw?
+    // Since we are moving to cloud, we should throw
+    throw new Error('Gagal mengunggah file hasil ke cloud: ' + error.message);
+  }
 }
 
 module.exports = {

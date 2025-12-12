@@ -31,15 +31,11 @@ app.use(express.static('public'));
 app.use('/output', express.static(OUTPUT_DIR)); // Use OUTPUT_DIR variable
 app.use(express.json());
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-        // Use jobId if provided, otherwise timestamp
-        const prefix = req.body.jobId || Date.now();
-        cb(null, prefix + '_' + sanitize(file.originalname));
-    },
-});
-const upload = multer({ storage });
+const cloudinaryStorage = require('./cloudinaryStorage');
+const { downloadToTemp, uploadFile, deleteFile, getPublicIdFromUrl } = require('./cloudinaryConfig');
+
+// Use Cloudinary storage
+const upload = multer({ storage: cloudinaryStorage });
 
 const ALLOWED_MIME_TYPES = [
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
@@ -105,7 +101,8 @@ app.post('/jobs/start-inspection', upload.single('file'), async (req, res) => {
         // Create job immediately
         const jobId = await jobManager.createJob('inspection', {
             filename: req.file.originalname,
-            filePath: filePath
+            fileUrl: req.file.path, // Cloudinary URL
+            publicId: req.file.filename // Cloudinary Public ID
         });
 
         // Return jobId immediately
@@ -113,11 +110,15 @@ app.post('/jobs/start-inspection', upload.single('file'), async (req, res) => {
 
         // Start background processing
         setImmediate(async () => {
+            let localFilePath = null;
             try {
+                await jobManager.updateJobProgress(jobId, 5, 'Downloading file from cloud...');
+                localFilePath = await downloadToTemp(req.file.path);
+
                 await jobManager.updateJobProgress(jobId, 10, 'Reading Excel file...');
 
                 const workbook = new Excel.Workbook();
-                await workbook.xlsx.readFile(filePath);
+                await workbook.xlsx.readFile(localFilePath);
                 const inspectionData = {};
                 const MAX_ROWS_TO_INSPECT = 5000;
 
@@ -170,14 +171,19 @@ app.post('/jobs/start-inspection', upload.single('file'), async (req, res) => {
             } catch (error) {
                 await jobManager.setJobFailed(jobId, error.message);
             } finally {
-                // Cleanup file after processing
-                if (filePath) fs.unlink(filePath, () => { });
+                // Cleanup local temp file
+                if (localFilePath) fs.unlink(localFilePath, () => { });
+                // Optional: Cleanup Cloudinary file if no longer needed
+                // await deleteFile(req.file.filename); 
             }
         });
 
     } catch (error) {
         console.error("Error starting inspection:", error.message);
-        if (filePath) fs.unlink(filePath, () => { });
+        // If upload happened but job failed to start, we might want to cleanup Cloudinary
+        if (req.file && req.file.filename) {
+            deleteFile(req.file.filename).catch(e => console.error(e));
+        }
         res.status(400).json({ ok: false, error: error.message });
     }
 });
@@ -204,7 +210,8 @@ app.post('/jobs/start-processing', upload.single('file'), async (req, res) => {
         // Create job
         const jobId = await jobManager.createJob('processing', {
             filename: req.file.originalname,
-            filePath: filePath,
+            fileUrl: req.file.path,
+            publicId: req.file.filename,
             mappings,
             classMap,
             selectedSheet,
@@ -216,11 +223,15 @@ app.post('/jobs/start-processing', upload.single('file'), async (req, res) => {
 
         // Start background processing
         setImmediate(async () => {
+            let localFilePath = null;
             try {
+                await jobManager.updateJobProgress(jobId, 5, 'Downloading file from cloud...');
+                localFilePath = await downloadToTemp(req.file.path);
+
                 // Process with chunking
                 const { allAcceptedRows, summary, rejectedRowsSample, acceptedRowsSample } =
                     await processAndDiagnoseSheetChunked(
-                        filePath,
+                        localFilePath,
                         mappings,
                         classMap,
                         selectedSheet,
@@ -235,23 +246,33 @@ app.post('/jobs/start-processing', upload.single('file'), async (req, res) => {
                 }
 
                 await jobManager.updateJobProgress(jobId, 90, 'Creating Excel file...');
-                const finalXlsxPath = await createFinalExcel(allAcceptedRows);
+                // createFinalExcel now returns { url, publicId } or similar, we need to update it
+                // But wait, createFinalExcel is in processExcel.js. I need to update it to return the Cloudinary URL.
+                // For now, let's assume I will update createFinalExcel to return the URL directly or an object.
+                // Let's assume it returns the URL string for backward compatibility or I'll check its implementation.
+                // I will update createFinalExcel to return the URL.
+
+                const finalXlsxUrl = await createFinalExcel(allAcceptedRows);
 
                 await jobManager.setJobCompleted(jobId, {
-                    excel: `/output/${path.basename(finalXlsxPath)}`,
+                    excel: finalXlsxUrl, // This will be a full Cloudinary URL
                     diagnostics: { summary, rejectedRowsSample, acceptedRowsSample }
                 });
 
             } catch (error) {
                 await jobManager.setJobFailed(jobId, error.message);
             } finally {
-                if (filePath) fs.unlink(filePath, () => { });
+                if (localFilePath) fs.unlink(localFilePath, () => { });
+                // Cleanup input file from Cloudinary to save space?
+                // await deleteFile(req.file.filename);
             }
         });
 
     } catch (error) {
         console.error('Error starting processing:', error.message);
-        if (filePath) fs.unlink(filePath, () => { });
+        if (req.file && req.file.filename) {
+            deleteFile(req.file.filename).catch(e => console.error(e));
+        }
         res.status(400).json({ ok: false, error: error.message });
     }
 });
@@ -287,19 +308,27 @@ app.post('/jobs/start-double-check', upload.fields([
         // Create job
         const jobId = await jobManager.createJob('double-check', {
             originalFile: originalFile.originalname,
-            processedFile: processedFile.originalname
+            processedFile: processedFile.originalname,
+            originalUrl: originalFile.path,
+            processedUrl: processedFile.path
         });
 
         res.json({ ok: true, jobId });
 
         // Background processing
         setImmediate(async () => {
+            let localOriginalPath = null;
+            let localProcessedPath = null;
             try {
+                await jobManager.updateJobProgress(jobId, 5, 'Downloading files...');
+                localOriginalPath = await downloadToTemp(originalFile.path);
+                localProcessedPath = await downloadToTemp(processedFile.path);
+
                 await jobManager.updateJobProgress(jobId, 10, 'Reading files...');
 
                 const comparisonResult = await compareFilesChunked(
-                    originalFile.path,
-                    processedFile.path,
+                    localOriginalPath,
+                    localProcessedPath,
                     mappings,
                     classMap,
                     selectedSheet,
@@ -313,15 +342,15 @@ app.post('/jobs/start-double-check', upload.fields([
             } catch (error) {
                 await jobManager.setJobFailed(jobId, error.message);
             } finally {
-                if (originalFile) fs.unlink(originalFile.path, () => { });
-                if (processedFile) fs.unlink(processedFile.path, () => { });
+                if (localOriginalPath) fs.unlink(localOriginalPath, () => { });
+                if (localProcessedPath) fs.unlink(localProcessedPath, () => { });
             }
         });
 
     } catch (error) {
         console.error('Error starting double check:', error.message);
-        if (originalFile) fs.unlink(originalFile.path, () => { });
-        if (processedFile) fs.unlink(processedFile.path, () => { });
+        if (originalFile && originalFile.filename) deleteFile(originalFile.filename).catch(e => console.error(e));
+        if (processedFile && processedFile.filename) deleteFile(processedFile.filename).catch(e => console.error(e));
         res.status(400).json({ ok: false, error: error.message });
     }
 });
@@ -493,26 +522,30 @@ app.post('/jobs/start-source-inspection', upload.single('file'), async (req, res
 
         const jobId = await jobManager.createJob('source-inspection', {
             filename: req.file.originalname,
-            filePath: filePath
+            fileUrl: req.file.path
         });
 
         res.json({ ok: true, jobId });
 
         setImmediate(async () => {
+            let localFilePath = null;
             try {
+                await jobManager.updateJobProgress(jobId, 10, 'Downloading file...');
+                localFilePath = await downloadToTemp(req.file.path);
+
                 await jobManager.updateJobProgress(jobId, 20, 'Inspecting source file...');
-                const inspectionResult = await inspectSourceFile(filePath, config);
+                const inspectionResult = await inspectSourceFile(localFilePath, config);
                 await jobManager.setJobCompleted(jobId, inspectionResult);
             } catch (error) {
                 await jobManager.setJobFailed(jobId, error.message);
             } finally {
-                if (filePath) fs.unlink(filePath, () => { });
+                if (localFilePath) fs.unlink(localFilePath, () => { });
             }
         });
 
     } catch (error) {
         console.error("Error starting source inspection:", error.message);
-        if (filePath) fs.unlink(filePath, () => { });
+        if (req.file && req.file.filename) deleteFile(req.file.filename).catch(e => console.error(e));
         res.status(400).json({ ok: false, error: error.message });
     }
 });
@@ -533,16 +566,20 @@ app.post('/jobs/start-report-build', upload.single('file'), async (req, res) => 
 
         const jobId = await jobManager.createJob('report-build', {
             filename: req.file.originalname,
-            filePath: filePath,
+            fileUrl: req.file.path,
             config
         });
 
         res.json({ ok: true, jobId });
 
         setImmediate(async () => {
+            let localFilePath = null;
             try {
-                const { resultPath, diagnostics } = await buildReportChunked(
-                    filePath,
+                await jobManager.updateJobProgress(jobId, 10, 'Downloading file...');
+                localFilePath = await downloadToTemp(req.file.path);
+
+                const { resultUrl, diagnostics } = await buildReportChunked(
+                    localFilePath,
                     config,
                     async (progress, message) => {
                         await jobManager.updateJobProgress(jobId, progress, message);
@@ -550,20 +587,20 @@ app.post('/jobs/start-report-build', upload.single('file'), async (req, res) => 
                 );
 
                 await jobManager.setJobCompleted(jobId, {
-                    excel: `/output/${path.basename(resultPath)}`,
+                    excel: resultUrl,
                     diagnostics
                 });
 
             } catch (error) {
                 await jobManager.setJobFailed(jobId, error.message);
             } finally {
-                if (filePath) fs.unlink(filePath, () => { });
+                if (localFilePath) fs.unlink(localFilePath, () => { });
             }
         });
 
     } catch (error) {
         console.error("Error starting report build:", error.message);
-        if (filePath) fs.unlink(filePath, () => { });
+        if (req.file && req.file.filename) deleteFile(req.file.filename).catch(e => console.error(e));
         res.status(400).json({ ok: false, error: error.message });
     }
 });
@@ -581,26 +618,30 @@ app.post('/jobs/start-template-inspection', upload.single('templateFile'), async
 
         const jobId = await jobManager.createJob('template-inspection', {
             filename: req.file.originalname,
-            filePath: filePath
+            fileUrl: req.file.path
         });
 
         res.json({ ok: true, jobId });
 
         setImmediate(async () => {
+            let localFilePath = null;
             try {
+                await jobManager.updateJobProgress(jobId, 10, 'Downloading template...');
+                localFilePath = await downloadToTemp(req.file.path);
+
                 await jobManager.updateJobProgress(jobId, 30, 'Inspecting template...');
-                const headers = await inspectTemplateFile(filePath);
+                const headers = await inspectTemplateFile(localFilePath);
                 await jobManager.setJobCompleted(jobId, { headers });
             } catch (error) {
                 await jobManager.setJobFailed(jobId, error.message);
             } finally {
-                if (filePath) fs.unlink(filePath, () => { });
+                if (localFilePath) fs.unlink(localFilePath, () => { });
             }
         });
 
     } catch (error) {
         console.error("Error inspecting template:", error.message);
-        if (filePath) fs.unlink(filePath, () => { });
+        if (req.file && req.file.filename) deleteFile(req.file.filename).catch(e => console.error(e));
         res.status(400).json({ ok: false, error: error.message });
     }
 });

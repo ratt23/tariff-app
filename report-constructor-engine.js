@@ -1,6 +1,8 @@
 const Excel = require('exceljs');
 const path = require('path');
+const fs = require('fs');
 const { processExcelInChunks, CHUNK_SIZES } = require('./chunkProcessor');
+const { uploadFile } = require('./cloudinaryConfig');
 
 function getCombinedHeaders(sheet, headerRowCount) {
     if (headerRowCount <= 0) return [];
@@ -200,17 +202,29 @@ async function buildReportChunked(filePath, config, progressCallback = () => { }
 
     diagnostics.rowsAdded = outSheet.rowCount - 1;
 
-    const outputDir = path.join(__dirname, 'output');
+    const os = require('os');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const outFileName = `Laporan_Kustom_${timestamp}.xlsx`;
-    const outPath = path.join(outputDir, outFileName);
+    const outPath = path.join(os.tmpdir(), outFileName);
 
     await outWb.xlsx.writeFile(outPath);
+
+    progressCallback(95, 'Uploading to cloud...');
+    let resultUrl = '';
+    try {
+        const uploadResult = await uploadFile(outPath, 'tariff-app/output');
+        resultUrl = uploadResult.secure_url;
+        // Cleanup local file
+        fs.unlink(outPath, () => { });
+    } catch (error) {
+        console.error('Error uploading report:', error);
+        throw new Error('Gagal mengunggah laporan ke cloud: ' + error.message);
+    }
 
     progressCallback(100, 'Report build completed');
 
     return {
-        resultPath: outPath,
+        resultUrl,
         diagnostics
     };
 }
@@ -284,15 +298,24 @@ async function buildReport(filePath, config) {
 
     diagnostics.rowsAdded = outSheet.rowCount - 1;
 
-    const outputDir = path.join(__dirname, 'output');
+    const os = require('os');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const outFileName = `Laporan_Kustom_${timestamp}.xlsx`;
-    const outPath = path.join(outputDir, outFileName);
+    const outPath = path.join(os.tmpdir(), outFileName);
 
     await outWb.xlsx.writeFile(outPath);
 
+    let resultUrl = '';
+    try {
+        const uploadResult = await uploadFile(outPath, 'tariff-app/output');
+        resultUrl = uploadResult.secure_url;
+        fs.unlink(outPath, () => { });
+    } catch (error) {
+        throw new Error('Gagal mengunggah laporan ke cloud: ' + error.message);
+    }
+
     return {
-        resultPath: outPath,
+        resultUrl,
         diagnostics
     };
 }
