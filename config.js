@@ -4,6 +4,7 @@
  */
 
 const path = require('path');
+const os = require('os');
 
 module.exports = {
   // Chunk sizes untuk berbagai operasi
@@ -22,11 +23,8 @@ module.exports = {
   // 'file' untuk production (Netlify), 'memory' untuk development
   STORAGE_TYPE: process.env.STORAGE_TYPE || 'file',
 
-  // Storage path - use absolute /tmp for Netlify, relative for local
-  STORAGE_PATH: process.env.STORAGE_PATH ||
-    (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
-      ? '/tmp/jobs'  // Absolute path for Netlify/Lambda
-      : path.join(__dirname, 'tmp', 'jobs')), // Relative for local
+  // Storage path - use system temp dir for reliability on Netlify/Lambda & Local
+  STORAGE_PATH: process.env.STORAGE_PATH || path.join(os.tmpdir(), 'tariff-app-jobs'),
 
   // Timeout settings (milliseconds)
   TIMEOUTS: {
